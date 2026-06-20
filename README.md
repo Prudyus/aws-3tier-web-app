@@ -203,5 +203,9 @@ This is a solid foundation rather than a finished production system. Natural nex
 ## Author
 
 **Yevhen Prudyus**
-
-> Built as an educational demonstration of AWS three-tier architecture. AWS service names and icons are trademarks of Amazon Web Services, Inc.
+Cloud Engineering Fellow — Silver Lining SysOps Fellowship Program (AWS Internship), Feb 2025 – Aug 2025
+Chicago, Illinois, United States · Remote
+ 
+[LinkedIn](https://www.linkedin.com/in/yevhenprudyus/)
+ 
+> Built as a hands-on demonstration of AWS three-tier architecture during a 26-week AWS cloud engineering fellowship. AWS service names and icons are trademarks of Amazon Web Services, Inc.
