@@ -214,7 +214,11 @@ Because the chain only ever trusts the previous tier, the database can *only* be
 This is a solid foundation rather than a finished production system. Natural next steps include a **CDN** (Amazon CloudFront) for global performance, a **Web Application Firewall** or **API Gateway** to strengthen the security posture, and managed services for **user authentication** (e.g. Amazon Cognito) and **domain management** (Amazon Route 53). Raising the Auto Scaling maximums and adding scaling policies would let the tiers grow under real load.
 
 ---
+## Source of the application code
 
+The web-tier (React + NGINX) and app-tier (Node.js) application code used in this demo follows AWS's official workshop: [aws-samples/aws-three-tier-web-architecture-workshop](https://github.com/aws-samples/aws-three-tier-web-architecture-workshop) (MIT-0 licensed). This repository focuses on the infrastructure design, deployment, and operational understanding built on top of that application.
+
+---
 ## Project materials
 
 | File | Description |
