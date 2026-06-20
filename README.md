@@ -6,6 +6,8 @@ It is built to be approachable for people who are new to AWS: the goal is not ju
 
 ![Architecture diagram](docs/architecture-diagram.png)
 
+> **Program context.** This project was completed during the **Silver Lining SysOps Fellowship Program — Amazon Web Services (AWS) Internship** (Feb 2025 – Aug 2025), a 26-week, remote, hands-on AWS cloud engineering fellowship covering architecture, automation, and operations. The fellowship included building and deploying 3-tier production web applications, working across core AWS services (EC2, S3, RDS, Lambda), Linux administration and scripting, monitoring/compliance/security practices (IAM, CloudWatch), guest lectures from AWS enterprise customers, and one-on-one mentorship from senior AWS engineers.
+
 ---
 
 ## Table of contents
@@ -66,6 +68,8 @@ A request travels through the tiers like this:
 
 Before any tier exists, the network is the skeleton everything is built on. Everything is deployed in the **us-east-1** region (you would normally pick the region closest to your users to minimize latency).
 
+![AWS Console Home, region set to US East (N. Virginia)](docs/screenshots/01-console-home.jpg)
+
 **VPC.** A single Amazon VPC provides a logically isolated section of the AWS cloud, defined by the CIDR range `10.0.0.0/16`. That range is deliberately large enough to supply plenty of private IP addresses and to be subdivided into six subnets.
 
 **Subnets.** Six subnets are spread across two Availability Zones (`us-east-1a` and `us-east-1b`) — two per tier:
@@ -76,11 +80,17 @@ Before any tier exists, the network is the skeleton everything is built on. Ever
 | Application | Private | 2 | Not directly reachable from the internet |
 | Database | Private | 2 | Not directly reachable from the internet |
 
+![All six subnets across two Availability Zones](docs/screenshots/02-vpc-subnets.jpg)
+
 Using two AZs — each a set of discrete data centers with independent power, networking, and connectivity — is the fundamental practice for fault tolerance and high availability.
 
 **Internet Gateway (IGW).** A single, horizontally scaled, highly available IGW is attached to the VPC to allow communication between the VPC and the internet.
 
+![Internet Gateway attached to the VPC](docs/screenshots/03-internet-gateway.jpg)
+
 **NAT Gateways.** Two NAT Gateways (one in each public subnet, one per AZ) let instances in private subnets make *outbound* connections — for example, to download software updates — while preventing the internet from *initiating* connections to them. Note that NAT Gateways must live in **public** subnets; placing them in a private subnet would not provide connectivity. Running one per AZ means that if one AZ's path fails, the other AZ's private instances keep their internet access.
+
+![Two NAT Gateways, one per Availability Zone](docs/screenshots/04-nat-gateways.jpg)
 
 **Route Tables.** Three logical route table configurations direct the traffic: the public route table sends all non-VPC traffic to the IGW (and is associated with both public subnets), while the private route tables send all non-VPC traffic to the NAT Gateway in their own AZ.
 
@@ -91,6 +101,10 @@ Using two AZs — each a set of discrete data centers with independent power, ne
 The web tier is the entry point and is made of three cooperating components.
 
 **Public Application Load Balancer.** Elastic Load Balancing automatically distributes incoming traffic across multiple targets in multiple AZs. It listens for HTTP on **port 80** and forwards requests to a target group (`web-tg`) containing the two web EC2 instances (one per AZ). The ALB continuously runs health checks; if an instance becomes unhealthy it stops sending traffic there and reroutes to the healthy instances — the core of the tier's resiliency.
+
+![Both the external (web) and internal (app) load balancers](docs/screenshots/05-load-balancers.jpg)
+
+![Web tier target group with two healthy targets](docs/screenshots/06-target-group-healthy.jpg)
 
 **Auto Scaling Group (`web-asg`).** The ASG keeps the desired number of instances running:
 
@@ -103,7 +117,13 @@ The web tier is the entry point and is made of three cooperating components.
 
 If an instance terminates, the ASG detects the shortfall and launches a replacement automatically.
 
+![Web tier Auto Scaling Group capacity and launch template](docs/screenshots/07-auto-scaling-group.jpg)
+
 **Launch Configuration / Template (`web-launch-config`).** This defines *what* the ASG launches: a custom **AMI**, instance type, and IAM permissions. The AMI was created by launching an Amazon Linux 2 instance, installing NGINX, deploying the React build, configuring everything, and then imaging it — so every new instance comes up identically and quickly.
+
+**Self-healing in action.** Terminating one of the running web instances confirms the resiliency story: the EC2 console shows the instance moving to `Terminated`, and within moments the ASG launches an identical replacement in the same Availability Zone to bring capacity back to 2.
+
+![EC2 console showing a terminated instance and the ASG replacing it](docs/screenshots/08-ec2-self-healing.jpg)
 
 ---
 
@@ -124,6 +144,8 @@ Like the web tier, the app instances are managed by their own Auto Scaling Group
 
 A simple `ping` to the internet from an app instance confirms that — despite having no public IP — it can still reach out through the NAT Gateway.
 
+![Session Manager shell pinging 8.8.8.8 from a private app instance](docs/screenshots/09-session-manager-ping.jpg)
+
 ---
 
 ## Database tier
@@ -135,6 +157,8 @@ A **DB Subnet Group** restricts the database to the two private database subnets
 - A **writer instance** — its endpoint handles both reads and writes.
 - A **reader instance (read replica)** — designed to absorb heavy read traffic.
 
+![Aurora cluster with writer and reader instances](docs/screenshots/10-rds-aurora-cluster.jpg)
+
 **Automatic failover** is the key high-availability feature: if the writer becomes unavailable (an AZ outage or instance failure), Aurora can promote the reader in the other AZ to be the new writer. The application then simply connects to the new writer endpoint, keeping downtime minimal.
 
 ---
@@ -142,6 +166,8 @@ A **DB Subnet Group** restricts the database to the two private database subnets
 ## Security groups
 
 Security groups are **stateful virtual firewalls** at the resource level — if outbound traffic is allowed, the corresponding return traffic is allowed automatically. The design follows the **principle of least privilege**: each layer only accepts traffic from the layer directly in front of it, forming a chain.
+
+![All security groups in the VPC, with inbound rules for the private app tier](docs/screenshots/11-security-groups.jpg)
 
 | Security group | Inbound (allowed source → port) | Outbound |
 |----------------|----------------------------------|----------|
@@ -152,6 +178,8 @@ Security groups are **stateful virtual firewalls** at the resource level — if 
 | `db-sg` | `app-ec2-sg` → 3306 (MySQL) | — |
 
 Because the chain only ever trusts the previous tier, the database can *only* be reached from the application tier, the application tier *only* from the internal load balancer, and so on back to the public entry point. Removing your IP from `external-alb-sg` instantly cuts off access to the whole site — a quick way to see the firewall working.
+
+![Browser unable to reach the site after the IP rule is removed](docs/screenshots/12-security-blocked-access.jpg)
 
 ---
 
@@ -191,17 +219,19 @@ This is a solid foundation rather than a finished production system. Natural nex
 
 | File | Description |
 |------|-------------|
+| [`docs/screenshots/`](docs/screenshots) | Console screenshots captured from the walkthrough video, embedded throughout this README |
 | [`docs/architecture-diagram.png`](docs/architecture-diagram.png) | The architecture diagram shown above |
 | [`docs/presentation.pptx`](docs/presentation.pptx) | The full slide deck |
 | [`docs/narration-script.pdf`](docs/narration-script.pdf) | The narrated walkthrough script |
-| [`docs/walkthrough.mp4`](docs/walkthrough.mp4) | Recorded video walkthrough of the AWS console |
-
-> **Video note:** the walkthrough video is ~39 MB. GitHub allows files up to 100 MB, but for a leaner repository you may prefer to host it on YouTube/Loom and link it here, or track it with [Git LFS](https://git-lfs.com/). See the project notes for details.
 
 ---
 
 ## Author
 
 **Yevhen Prudyus**
+Cloud Engineering Fellow — Silver Lining SysOps Fellowship Program (AWS Internship), Feb 2025 – Aug 2025
+Chicago, Illinois, United States · Remote
 
-> Built as an educational demonstration of AWS three-tier architecture. AWS service names and icons are trademarks of Amazon Web Services, Inc.
+[LinkedIn](https://www.linkedin.com/in/yevhenprudyus/)
+
+> Built as a hands-on demonstration of AWS three-tier architecture during a 26-week AWS cloud engineering fellowship. AWS service names and icons are trademarks of Amazon Web Services, Inc.
